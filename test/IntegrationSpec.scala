@@ -1,28 +1,22 @@
 package test
 
-import org.specs2.mutable._
-
-import play.api.test._
-import play.api.test.Helpers._
+import hedgehog.runner._
 
 /**
  * add your integration spec here.
  * An integration test will fire up a whole play application in a real (or headless) browser
  */
-class IntegrationSpec extends Specification {
+object IntegrationSpec extends Properties {
 
-//  "Application" should {
-//    
-//    "work from within a browser" in {
+  override def tests: List[Test] = List(
+//    example("Application should work from within a browser", {
 //      running(TestServer(3333), HTMLUNIT) { browser =>
 //
 //        browser.goTo("http://localhost:3333/")
 //
-//        browser.pageSource must contain("<title>Extract Email Addresses</title>")
-//       
+//        Result.assert(browser.pageSource.contains("<title>Extract Email Addresses</title>"))
 //      }
-//    }
-//    
-//  }
-  
+//    }),
+  )
+
 }

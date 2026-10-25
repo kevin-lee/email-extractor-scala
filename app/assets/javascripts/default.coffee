@@ -67,6 +67,8 @@ class Page
       "type" : "POST"
       "dataType" : "json"
       "contentType" : "application/json"
+      "headers" :
+        "Csrf-Token" : $("meta[name='csrf-token']").attr("content")
 
 
     @submitButton.on("click", (event) =>

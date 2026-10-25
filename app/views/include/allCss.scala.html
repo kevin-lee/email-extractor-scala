@@ -1,10 +1,11 @@
-    <link type="text/css" href="@routes.WebJarAssets.at(WebJarAssets.locate("bootstrap.min.css"))" rel="stylesheet" />
-    <link type="text/css" href="@routes.WebJarAssets.at(WebJarAssets.locate("bootstrap-theme.min.css"))" rel="stylesheet" />
+@()(implicit webJarsUtil: org.webjars.play.WebJarsUtil)
+    @webJarsUtil.locate("bootstrap", "css/bootstrap.min.css").css()
+    @webJarsUtil.locate("bootstrap", "css/bootstrap-theme.min.css").css()
     <link type="text/css" href="@routes.Assets.at("stylesheets/sticky-footer-navbar.min.css")" rel="stylesheet" />
     <link type="text/css" href="@routes.Assets.at("stylesheets/default.min.css")" rel="stylesheet" />
 
     <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!--[if lt IE 9]>
-      <script src="@routes.WebJarAssets.at(WebJarAssets.locate("html5shiv.min.js"))"></script>
+      @webJarsUtil.locate("html5shiv", "html5shiv.min.js").script()
       <script src="@routes.Assets.at("javascripts/respond.min.js")"></script>
     <![endif]-->

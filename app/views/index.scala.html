@@ -1,4 +1,4 @@
-@(version: String)
+@(version: String)(implicit request: RequestHeader, webJarsUtil: org.webjars.play.WebJarsUtil)
 <!DOCTYPE html>
 <html>
   <head>
@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Email address extractor">
     <meta name="author" content="Kevin Lee">
+    <meta name="csrf-token" content="@helper.CSRF.getToken.value">
     <title>Extract Email Addresses</title>
     @include.allCss()
   </head>

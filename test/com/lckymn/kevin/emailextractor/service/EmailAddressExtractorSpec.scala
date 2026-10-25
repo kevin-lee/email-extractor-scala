@@ -1,78 +1,89 @@
 package com.lckymn.kevin.emailextractor.service
 
+import hedgehog._
+import hedgehog.runner._
 import models.EmailAddress
-import org.specs2.mutable.Specification
 
-class EmailAddressExtractorSpec extends Specification {
+object EmailAddressExtractorSpec extends Properties {
 
-  trait Emails {
-    val value1 = "test@test.com, tere@some.com, sdjsdjk@blah.com"
-    val expectedEmailSet = Set(EmailAddress("test@test.com"),
-      EmailAddress("tere@some.com"),
-      EmailAddress("sdjsdjk@blah.com"))
+  val value1           = "test@test.com, tere@some.com, sdjsdjk@blah.com"
+  val expectedEmailSet = Set(EmailAddress("test@test.com"), EmailAddress("tere@some.com"), EmailAddress("sdjsdjk@blah.com"))
 
-    val value2 = "test@test.com dskljsdkjsd;dskjd another@email.com tere@some.com, sdkjdasiuodas sdjsdjk@blah.com. sdkljsdlkjasd"
-    val expectedEmailSet2 = Set(EmailAddress("test@test.com"),
-      EmailAddress("another@email.com"),
-      EmailAddress("tere@some.com"),
-      EmailAddress("sdjsdjk@blah.com"))
+  val value2            =
+    "test@test.com dskljsdkjsd;dskjd another@email.com tere@some.com, sdkjdasiuodas sdjsdjk@blah.com. sdkljsdlkjasd"
+  val expectedEmailSet2 = Set(
+    EmailAddress("test@test.com"),
+    EmailAddress("another@email.com"),
+    EmailAddress("tere@some.com"),
+    EmailAddress("sdjsdjk@blah.com"),
+  )
 
-    val value3 = "test@test.com dskljsdkjsd;dskjd TEST@TEST.COM another_address-2@email.com tere+blah@some.com, sdkjdasiuodas sdj.sdjk@blah.com. sdkljsdlkjasd"
-    val expectedEmailSet3 = Set(EmailAddress("test@test.com"),
-      EmailAddress("another_address-2@email.com"),
-      EmailAddress("tere+blah@some.com"),
-      EmailAddress("sdj.sdjk@blah.com"))
+  val value3            =
+    "test@test.com dskljsdkjsd;dskjd TEST@TEST.COM another_address-2@email.com tere+blah@some.com, sdkjdasiuodas sdj.sdjk@blah.com. sdkljsdlkjasd"
+  val expectedEmailSet3 = Set(
+    EmailAddress("test@test.com"),
+    EmailAddress("another_address-2@email.com"),
+    EmailAddress("tere+blah@some.com"),
+    EmailAddress("sdj.sdjk@blah.com"),
+  )
 
-    val empty = Set.empty
+  override def tests: List[Test] = List(
+    example("""EmailAddressExtractor().extract("") should return Set()""", testEmpty),
+    example(s"""EmailAddressExtractor().extract("$value1") should return $expectedEmailSet""", testValue1),
+    example(s"""EmailAddressExtractor().extract("$value2") should return $expectedEmailSet2""", testValue2),
+    example(
+      s"""EmailAddressExtractor("@".r).extract("$value2") should return Set(EmailAddress("@"))""",
+      testCustomPattern
+    ),
+    example(s"""EmailAddressExtractor().extract("$value3") should return $expectedEmailSet3""", testValue3),
+    property("EmailAddressExtractor().extract(text) should return all the email addresses in the text", testExtractAll),
+    property("EmailAddressExtractor().extract(text without @) should return Set()", testNoAtSign),
+  )
 
-  }
+  def testEmpty: Result =
+    EmailAddressExtractor().extract("") ==== Set.empty[EmailAddress]
 
-  new Emails {
-    """EmailAddressExtractor().extract("")""" should {
-      """return Set()""" in {
-        EmailAddressExtractor()
-          .extract("") === empty
-      }
+  def testValue1: Result =
+    EmailAddressExtractor().extract(value1) ==== expectedEmailSet
+
+  def testValue2: Result =
+    EmailAddressExtractor().extract(value2) ==== expectedEmailSet2
+
+  def testCustomPattern: Result =
+    EmailAddressExtractor("@".r).extract(value2) ==== Set(EmailAddress("@"))
+
+  def testValue3: Result =
+    EmailAddressExtractor().extract(value3) ==== expectedEmailSet3
+
+  private val genWord: Gen[String] = Gen.string(Gen.alphaNum, Range.linear(1, 10))
+
+  private def genSegments(separators: List[Char]): Gen[String] =
+    for {
+      head <- genWord
+      tail <- (for {
+                separator <- Gen.element1(separators.head, separators.tail: _*)
+                word      <- genWord
+              } yield s"$separator$word").list(Range.linear(0, 3))
+    } yield (head :: tail).mkString
+
+  private val genEmailAddress: Gen[String] =
+    for {
+      localPart  <- genSegments(List('-', '_', '.', '+'))
+      domainPart <- genSegments(List('-', '_'))
+      tlds       <- genSegments(List('-', '_')).list(Range.linear(1, 3))
+    } yield s"$localPart@$domainPart.${tlds.mkString(".")}"
+
+  def testExtractAll: Property =
+    for {
+      emails <- genEmailAddress.list(Range.linear(1, 10)).log("emails")
+      filler <- genWord.list(Range.linear(1, 5)).log("filler")
+    } yield {
+      val text = emails.zipAll(filler, "", "").map { case (email, word) => s"$email $word" }.mkString(", ")
+      EmailAddressExtractor().extract(text) ==== emails.map(EmailAddress(_)).toSet
     }
-  }
 
-  new Emails {
-    s"""EmailAddressExtractor().extract("$value1")""" should {
-      s"""return $expectedEmailSet""" in {
-        EmailAddressExtractor()
-          .extract(value1) === expectedEmailSet
-      }
-    }
-  }
-
-  new Emails {
-    s"""EmailAddressExtractor()
-  .extract("$value2")""" should {
-      s"""return $expectedEmailSet2""" in {
-        EmailAddressExtractor()
-          .extract(value2) === expectedEmailSet2
-      }
-    }
-  }
-
-  new Emails {
-    s"""EmailAddressExtractor("@".r)
-  .extract("$value2")""" should {
-      """return Set(EmailAddress("@"))""" in {
-        EmailAddressExtractor("@".r)
-          .extract(value2) === Set(EmailAddress("@"))
-      }
-    }
-  }
-
-  new Emails {
-    s"""EmailAddressExtractor()
-    .extract("$value3")""" should {
-      s"""return $expectedEmailSet3""" in {
-        EmailAddressExtractor()
-          .extract(value3) === expectedEmailSet3
-      }
-    }
-  }
-
+  def testNoAtSign: Property =
+    for {
+      text <- Gen.string(Gen.unicode, Range.linear(0, 100)).map(_.filterNot(_ == '@')).log("text")
+    } yield EmailAddressExtractor().extract(text) ==== Set.empty[EmailAddress]
 }
