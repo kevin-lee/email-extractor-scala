@@ -1,114 +1,191 @@
 package test
 
-import org.specs2.mutable._
-import play.api.test._
-import play.api.test.Helpers._
-import play.api.libs.json.Json
-import scala.collection.immutable.Set
 import com.lckymn.kevin.emailextractor.util.CommonUtil._
-import controllers.routes
+import hedgehog._
+import hedgehog.runner._
+import play.api.Application
+import play.api.inject.guice.GuiceApplicationBuilder
+import play.api.libs.json.Json
+import play.api.mvc.{CookieHeaderEncoding, SessionCookieBaker}
+import play.api.test.Helpers._
+import play.api.test._
 
 /**
  * Add your spec here.
  * You can mock out a whole application including requests, plugins etc.
  * For more information, consult the wiki.
  */
-class ApplicationSpec extends Specification {
+object ApplicationSpec extends Properties {
 
-  "Application" should {
+  override def tests: List[Test] = List(
+    example("send 404 on a bad request", testBadRequest),
+    example("render the index page", testIndexPage),
+    example("post no input JSON at all", testNoInputJson),
+    example("post with empty input JSON value", testEmptyInputJsonValue),
+    example("post with JSON containing no email address", testJsonWithNoEmailAddress),
+    example("post with JSON containing some email addresses", testJsonWithSomeEmailAddresses),
+    example("post with a session cookie but no CSRF token", testPostWithoutCsrfToken),
+    example("post with the session cookie and the CSRF token from the index page", testPostWithCsrfToken),
+  )
 
-    "send 404 on a bad request" in {
-      running(FakeApplication()) {
-        route(FakeRequest(GET, "/boum")) must beNone
-      }
-    }
+  private def withApp(f: Application => Result): Result = {
+    val app = new GuiceApplicationBuilder().build()
+    running(app)(f(app))
+  }
 
-    "render the index page" in {
-      running(FakeApplication()) {
-        val home = route(FakeRequest(GET, "/")).get
+  def testBadRequest: Result = withApp { app =>
+    val result = route(app, FakeRequest(GET, "/boum")).map(status(_))
+    result ==== Some(NOT_FOUND)
+  }
 
-        status(home) must equalTo(OK)
-        contentType(home) must beSome.which(_ == "text/html")
-        contentAsString(home) must contain("<title>Extract Email Addresses</title>")
-      }
-    }
+  def testIndexPage: Result = withApp { app =>
+    val home = route(app, FakeRequest(GET, "/")).get
 
-    "post no input JSON at all" in {
-      running(FakeApplication()) {
-        val result = route(FakeRequest(POST, "/")).get
+    Result.all(
+      List(
+        status(home) ==== OK,
+        contentType(home) ==== Some("text/html"),
+        Result.assert(contentAsString(home).contains("<title>Extract Email Addresses</title>")),
+      )
+    )
+  }
 
-        status(result) must equalTo(BAD_REQUEST)
-        contentType(result) must beSome.which(_ == "text/html")
-      }
-    }
+  def testNoInputJson: Result = withApp { app =>
+    val result = route(app, FakeRequest(POST, "/")).get
 
-    "post with empty input JSON value" in {
-      running(FakeApplication()) {
-        val result = route(FakeRequest(POST, "/")
-          .withJsonBody(Json.obj("inputValue" -> ""))).get
+    Result.all(
+      List(
+        status(result) ==== UNSUPPORTED_MEDIA_TYPE,
+        contentType(result) ==== Some("text/html"),
+      )
+    )
+  }
 
-        status(result) must equalTo(OK)
-        contentType(result) must beSome.which(_ == "application/json")
-        Json.parse(contentAsString(result)) must be equalTo (
-          Json.parse(
-            s"""
+  def testEmptyInputJsonValue: Result = withApp { app =>
+    val result = route(
+      app,
+      FakeRequest(POST, "/")
+        .withJsonBody(Json.obj("inputValue" -> ""))
+    ).get
+
+    Result.all(
+      List(
+        status(result) ==== OK,
+        contentType(result) ==== Some("application/json"),
+        Json.parse(contentAsString(result)) ==== Json.parse(
+          s"""
               {
                 "success": false,
                 "message": "You did not submit any text.",
                 "howMany": 0,
                 "result": ""
               }
-              """))
-      }
-    }
+              """
+        ),
+      )
+    )
+  }
 
-    "post with JSON containing no email address" in {
-      running(FakeApplication()) {
-        val result = route(FakeRequest(POST, "/")
-          .withJsonBody(Json.obj("inputValue" -> "This doesn't contain any email addresses."))).get
+  def testJsonWithNoEmailAddress: Result = withApp { app =>
+    val result = route(
+      app,
+      FakeRequest(POST, "/")
+        .withJsonBody(Json.obj("inputValue" -> "This doesn't contain any email addresses."))
+    ).get
 
-        status(result) must equalTo(OK)
-        contentType(result) must beSome.which(_ == "application/json")
-        val resultMessage = "There is no email address found."
-        val size = 0
-        Json.parse(contentAsString(result)) must be equalTo (
-          Json.parse(
-            s"""
+    val resultMessage = "There is no email address found."
+    val size          = 0
+
+    Result.all(
+      List(
+        status(result) ==== OK,
+        contentType(result) ==== Some("application/json"),
+        Json.parse(contentAsString(result)) ==== Json.parse(
+          s"""
               {
                 "success": true,
                 "message": "${resultMessage}",
                 "howMany": ${size},
                 "result": ""
               }
-              """))
-      }
-    }
+              """
+        ),
+      )
+    )
+  }
 
-    "post with JSON containing some email addresses" in {
-      running(FakeApplication()) {
-        val first = "kevin.lee@some.fake.testemailaddress.com"
-        val second = "another@email.address.cc"
-        val third = "the.third.one@test.com"
-        val result = route(FakeRequest(POST, "/")
-          .withJsonBody(Json.obj("inputValue" -> s"This contains some email addresses. ${first}, ${second} blah blah ${third}"))).get
+  def testJsonWithSomeEmailAddresses: Result = withApp { app =>
+    val first  = "kevin.lee@some.fake.testemailaddress.com"
+    val second = "another@email.address.cc"
+    val third  = "the.third.one@test.com"
+    val result = route(
+      app,
+      FakeRequest(POST, "/")
+        .withJsonBody(
+          Json.obj("inputValue" -> s"This contains some email addresses. ${first}, ${second} blah blah ${third}")
+        )
+    ).get
 
-        status(result) must equalTo(OK)
-        contentType(result) must beSome.which(_ == "application/json")
+    val resultSet = Set(first, second, third)
+    val size      = resultSet.size
 
-        val resultSet = Set(first, second, third)
-        val size = resultSet.size
-        
-        Json.parse(contentAsString(result)) must be equalTo (
-          Json.parse(
-            s"""
+    Result.all(
+      List(
+        status(result) ==== OK,
+        contentType(result) ==== Some("application/json"),
+        Json.parse(contentAsString(result)) ==== Json.parse(
+          s"""
                 {
                 "success": true,
                 "message": "${makeMessage(size)}",
                 "howMany": ${size},
                 "result": "${resultSet.mkString(", ")}"
                 }
-                """))
-      }
+                """
+        ),
+      )
+    )
+  }
+
+  private val csrfTokenPattern = """<meta name="csrf-token" content="([^"]+)">""".r
+
+  /** Makes a POST request that carries the session of the given result, as a browser does.
+    * FakeRequest does not read the session from the Cookie header, so the session is set with withSession.
+    * The Cookie header is still necessary because the CSRF filter checks only requests that have it.
+    */
+  private def postWithSessionOf(app: Application, home: scala.concurrent.Future[play.api.mvc.Result]) = {
+    val sessionCookie = app.injector.instanceOf[SessionCookieBaker].encodeAsCookie(session(home))
+    val cookieHeader  = app.injector.instanceOf[CookieHeaderEncoding].encodeCookieHeader(Seq(sessionCookie))
+    FakeRequest(POST, "/")
+      .withSession(session(home).data.toSeq: _*)
+      .withHeaders(COOKIE -> cookieHeader)
+      .withJsonBody(Json.obj("inputValue" -> "kevin@test.com"))
+  }
+
+  def testPostWithoutCsrfToken: Result = withApp { app =>
+    val home   = route(app, FakeRequest(GET, "/")).get
+    val result = route(app, postWithSessionOf(app, home)).get
+
+    status(result) ==== FORBIDDEN
+  }
+
+  def testPostWithCsrfToken: Result = withApp { app =>
+    val home      = route(app, FakeRequest(GET, "/")).get
+    val csrfToken = csrfTokenPattern.findFirstMatchIn(contentAsString(home)).map(_.group(1))
+
+    csrfToken match {
+      case Some(token) =>
+        val result = route(app, postWithSessionOf(app, home).withHeaders("Csrf-Token" -> token)).get
+
+        Result.all(
+          List(
+            status(result) ==== OK,
+            (Json.parse(contentAsString(result)) \ "result").asOpt[String] ==== Some("kevin@test.com"),
+          )
+        )
+
+      case None =>
+        Result.failure.log("The index page has no CSRF token.")
     }
   }
 }
