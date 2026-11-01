@@ -1,7 +1,7 @@
 ThisBuild / scalaVersion := "2.13.18"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayScala)
+  .enablePlugins(PlayScala, DebianPlugin, SystemdPlugin)
   .settings(
     name    := "email-extractor-scala",
     version := "0.0.9",
@@ -20,4 +20,15 @@ lazy val root = (project in file("."))
     LessKeys.compress         := true,
     Assets / pipelineStages   := Seq(uglify),
     scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlint", "-Wconf:src=routes/.*:s,src=twirl/.*:s"),
+    Linux / maintainer        := "Kevin Lee <kevin@kevinlee.io>",
+    Linux / packageSummary    := "Email Address Extractor",
+    packageDescription        := "Email Address Extractor app",
+    debianPackageDependencies := Seq("openjdk-21-jre-headless"),
+    Debian / version          := sys.env.get("BUILD_NUMBER").fold(version.value)(n => s"${version.value}+$n"),
+    Universal / javaOptions ++= Seq(
+      "-J-Xmx192m",
+      "-Dhttp.address=127.0.0.1",
+      "-Dpidfile.path=/dev/null",
+      "-Dplay.http.context=/email-extractor-scala",
+    ),
   )
