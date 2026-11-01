@@ -36,9 +36,32 @@ object EmailAddressExtractorSpec extends Properties {
       testCustomPattern
     ),
     example(s"""EmailAddressExtractor().extract("$value3") should return $expectedEmailSet3""", testValue3),
+    example("EmailAddressExtractor().extract(a very long text of separated words) should not overflow the stack", testLongSeparatedText),
+    example("EmailAddressExtractor().extract(a very long word) should find the email address after it", testLongWord),
+    example("EmailAddressExtractor().extract(an email address of 254 characters) should return it", testMaxLength),
+    example("EmailAddressExtractor().extract(an email address of 255 characters) should return Set()", testOverMaxLength),
     property("EmailAddressExtractor().extract(text) should return all the email addresses in the text", testExtractAll),
     property("EmailAddressExtractor().extract(text without @) should return Set()", testNoAtSign),
   )
+
+  def testLongSeparatedText: Result =
+    EmailAddressExtractor().extract("a." * 1000000 + "a") ==== Set.empty[EmailAddress]
+
+  def testLongWord: Result =
+    EmailAddressExtractor().extract("a" * 1000000 + " test@test.com") ==== Set(EmailAddress("test@test.com"))
+
+  private def emailAddressOfLength(length: Int): String = {
+    val domain = "@test.com"
+    "a" * (length - domain.length) + domain
+  }
+
+  def testMaxLength: Result = {
+    val emailAddress = emailAddressOfLength(254)
+    EmailAddressExtractor().extract(emailAddress) ==== Set(EmailAddress(emailAddress))
+  }
+
+  def testOverMaxLength: Result =
+    EmailAddressExtractor().extract(emailAddressOfLength(255)) ==== Set.empty[EmailAddress]
 
   def testEmpty: Result =
     EmailAddressExtractor().extract("") ==== Set.empty[EmailAddress]
